@@ -1,85 +1,69 @@
 import datetime
 import requests
+import mysql.connector
 from bs4 import BeautifulSoup
 
-# URL de la página web
-url = 'https://www.autosport.com/f1/schedule/2024/'
+# Conectar a la base de datos
+connection = mysql.connector.connect(
+    host='localhost',  # Si estás ejecutando desde tu máquina local
+    port=3310,         # El puerto mapeado en tu contenedor Docker
+    user='freddy',
+    password='Test123',
+    database='db_motorsport_predictor_f1'
+)
 
-def parse_datetime(date_str, time_str):
-    # Definir el formato de la fecha y hora
-    date_format = "%d %b"  # Día y mes
-    time_format = "%H:%M"  # Hora y minuto
-    
-    # Crear un objeto datetime a partir de la fecha y hora
-    event_datetime_str = f"{date_str} {time_str}"
-    try:
-        event_datetime = datetime.datetime.strptime(event_datetime_str, f"{date_format} {time_format}")
-    except ValueError:
-        return None
-    
-    # Ajustar el año a 2024
-    event_datetime = event_datetime.replace(year=2024)
-    
-    return event_datetime
+# Datos obtenidos del scraping
+races_data = [
+    {'race_name': 'Bahrain GP', 'date': '2024-03-02', 'time': '18:00:00'},
+    {'race_name': 'Saudi Arabian GP', 'date': '2024-03-09', 'time': '20:00:00'},
+    {'race_name': 'Australian GP', 'date': '2024-03-24', 'time': '15:00:00'},
+    {'race_name': 'Japanese GP', 'date': '2024-04-07', 'time': '14:00:00'},
+    {'race_name': 'Chinese GP', 'date': '2024-04-21', 'time': '15:00:00'},
+    {'race_name': 'Miami GP', 'date': '2024-05-05', 'time': '16:00:00'},
+    {'race_name': 'Emilia Romagna GP', 'date': '2024-05-19', 'time': '15:00:00'},
+    {'race_name': 'Monaco GP', 'date': '2024-05-26', 'time': '15:00:00'},
+    {'race_name': 'Canadian GP', 'date': '2024-06-09', 'time': '14:00:00'},
+    {'race_name': 'Spanish GP', 'date': '2024-06-23', 'time': '15:00:00'},
+    {'race_name': 'Austrian GP', 'date': '2024-06-30', 'time': '15:00:00'},
+    {'race_name': 'British GP', 'date': '2024-07-07', 'time': '15:00:00'},
+    {'race_name': 'Hungarian GP', 'date': '2024-07-21', 'time': '15:00:00'},
+    {'race_name': 'Belgian GP', 'date': '2024-07-28', 'time': '15:00:00'},
+    {'race_name': 'Dutch GP', 'date': '2024-08-25', 'time': '15:00:00'},
+    {'race_name': 'Italian GP', 'date': '2024-09-01', 'time': '15:00:00'},
+    {'race_name': 'Azerbaijan GP', 'date': '2024-09-15', 'time': '15:00:00'},
+    {'race_name': 'Singapore GP', 'date': '2024-09-22', 'time': '20:00:00'},
+    {'race_name': 'United States GP', 'date': '2024-10-20', 'time': '14:00:00'},
+    {'race_name': 'Mexican GP', 'date': '2024-10-27', 'time': '14:00:00'},
+    {'race_name': 'Brazilian GP', 'date': '2024-11-03', 'time': '14:00:00'},
+    {'race_name': 'Las Vegas GP', 'date': '2024-11-23', 'time': '22:00:00'},
+    {'race_name': 'Qatar GP', 'date': '2024-12-01', 'time': '19:00:00'},
+    {'race_name': 'Abu Dhabi GP', 'date': '2024-12-08', 'time': '17:00:00'}
+]
 
-def get_next_race(races):
-    # Obtener la fecha y hora actual
-    now = datetime.datetime.now()
-    
-    # Encontrar el próximo evento
-    next_race = None
-    for race in races:
-        if race['race_date_time'] > now:
-            if not next_race or race['race_date_time'] < next_race['race_date_time']:
-                next_race = race
-    
-    return next_race
 
-# Realizar la solicitud GET a la URL
-response = requests.get(url)
+cursor = connection.cursor()
 
-# Verificar que la solicitud fue exitosa
-if response.status_code == 200:
-    # Parsear el HTML con BeautifulSoup
-    soup = BeautifulSoup(response.text, 'html.parser')
-    
-    # Encontrar todos los elementos de la tabla de horario
-    schedule = soup.find_all('tbody', class_="ms-schedule-table__item")
-    
-    if schedule:
-        races = []
-        
-        for race in schedule:
-            # Obtener el nombre del evento
-            race_name = race.select_one('.ms-schedule-table-item-main__event a span').text.strip()
+# Insertar los datos en la tabla `race`
+for i, race in enumerate(races_data):
+    query = """
+    INSERT INTO race (season, round, race_name, circuit_id, date, time)
+    VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    values = (
+        '2024',
+        i + 1,  # `round`
+        race['race_name'],
+        i + 1,  # `circuit_id`
+        race['date'],
+        race['time']
+    )
+    cursor.execute(query, values)
 
-            # Obtener la fecha en formato 'local'
-            race_date = race.select_one('.ms-schedule-table-date--local span').text.strip()
-            
-            # Obtener la hora en formato 'local'
-            race_time = race.select_one('.ms-schedule-table__time .ms-schedule-table-date--local').text.strip()
+# Confirmar los cambios en la base de datos
+connection.commit()
 
-            # Parsear fecha y hora
-            race_datetime = parse_datetime(race_date, race_time)
-                
-            if race_datetime:
-                races.append({
-                    'race': race_name,
-                    'race_date_time': race_datetime
-                })
-        
-        # Mostrar los resultados extraídos
-        print("Lista completa de carreras:")
-        for race in races:
-            print(f"Carrera: {race['race']} - Fecha y Hora: {race['race_date_time']}")
-        
-        # Encontrar y mostrar el próximo evento
-        next_race = get_next_race(races)
-        if next_race:
-            print(f"\nLa próxima carrera es: {next_race['race']} - Fecha y Hora: {next_race['race_date_time']}")
-        else:
-            print("\nNo hay eventos futuros.")
-    else:
-        print("No se encontraron carreras en la página.")
-else:
-    print(f"Error al acceder a la URL: {response.status_code}")
+# Cerrar la conexión
+cursor.close()
+connection.close()
+
+print("Datos insertados correctamente en la tabla `race`.")
